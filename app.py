@@ -7,23 +7,35 @@ from datetime import datetime
 # 1️⃣ 날씨 데이터 가져오기 함수
 # ============================================
 def get_weather_data(lat, lon, api_key):
-    # 유저가 제공한 One Call 3.0 URL 양식
-    url = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&exclude=minutely&appid={api_key}&units=metric&lang=kr"
+    # 3.0(구독형) 대신 2.5(완전 무료형) URL을 사용합니다.
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric&lang=kr"
     response = requests.get(url)
     return response.json()
 
 
 def get_coords(city_name, api_key):
-    # 도시 이름으로 위도/경도를 찾는 Geocoding API
     geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={city_name}&limit=1&appid={api_key}"
-    res = requests.get(geo_url).json()
-    if res:
-        return (
-            res[0]["lat"],
-            res[0]["lon"],
-            res[0]["local_names"].get("ko", res[0]["name"]),
-        )
-    return None, None, None
+
+    try:
+        response = requests.get(geo_url)
+        res = response.json()
+
+        # [디버깅] 서버에서 받은 응답을 화면에 잠시 보여줍니다.
+        # st.write("지오코딩 응답:", res)
+
+        if res and len(res) > 0:
+            lat = res[0].get("lat")
+            lon = res[0].get("lon")
+            local_names = res[0].get("local_names", {})
+            kor_name = local_names.get("ko", res[0].get("name"))
+            return lat, lon, kor_name
+
+        return None, None, None
+
+    except Exception as e:
+        # 에러 메시지를 더 자세히 출력하도록 변경
+        st.error(f"좌표 가져오기 실패: {type(e).__name__} - {e}")
+        return None, None, None
 
 
 # ============================================
@@ -49,44 +61,21 @@ if st.button("날씨 확인하기"):
         with st.spinner("날씨 정보를 불러오는 중..."):
             lat, lon, kor_name = get_coords(city, api_key)
 
-            if lat:
+            if lat is not None:
                 data = get_weather_data(lat, lon, api_key)
 
-                if "current" in data:
-                    current = data["current"]
-
-                    # 1. 현재 날씨 대시보드
+                # 2.5 버전은 "current" 대신 바로 데이터가 들어있습니다.
+                if "main" in data:
                     st.subheader(f"🏠 {kor_name}의 현재 날씨")
-
                     col1, col2, col3 = st.columns(3)
-                    col1.metric("온도", f"{current['temp']}°C")
-                    col2.metric("습도", f"{current['humidity']}%")
-                    col3.metric("날씨", current["weather"][0]["description"])
+                    col1.metric("온도", f"{data['main']['temp']}°C")
+                    col2.metric("습도", f"{data['main']['humidity']}%")
+                    col3.metric("날씨", data["weather"][0]["description"])
 
-                    # 날씨 아이콘 표시
-                    icon_code = current["weather"][0]["icon"]
+                    icon_code = data["weather"][0]["icon"]
                     st.image(f"http://openweathermap.org/img/wn/{icon_code}@2x.png")
-
-                    # 2. 시간별 예보 (간단히 5시간만)
-                    st.divider()
-                    st.subheader("⏰ 시간별 예보 (향후 5시간)")
-                    hourly_cols = st.columns(5)
-                    for i in range(5):
-                        h_data = data["hourly"][i]
-                        time = datetime.fromtimestamp(h_data["dt"]).strftime("%H시")
-                        hourly_cols[i].write(f"**{time}**")
-                        hourly_cols[i].write(f"{h_data['temp']}°")
-                        h_icon = h_data["weather"][0]["icon"]
-                        hourly_cols[i].image(
-                            f"http://openweathermap.org/img/wn/{h_icon}.png"
-                        )
-
-                    # 3. 상세 정보 (JSON 데이터 확인용 - 개발자용)
-                    with st.expander("데이터 원문 보기"):
-                        st.json(data)
                 else:
-                    st.error(
-                        "날씨 데이터를 가져오지 못했습니다. API 플랜을 확인하세요."
-                    )
+                    st.error("데이터 구조가 다릅니다. API 응답을 확인하세요.")
+                    st.write(data)  # 서버가 보낸 메시지 확인 (예: 401, 429 에러 등)
             else:
                 st.error("해당 도시를 찾을 수 없습니다.")
