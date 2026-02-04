@@ -79,7 +79,7 @@ if (
     try:
         sys_instructions = get_system_prompt(language, level, topic)
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash", system_instruction=sys_instructions
+            model_name="gemini-2.0-flash", system_instruction=sys_instructions
         )
         st.session_state.chat_session = model.start_chat(history=[])
 
